@@ -1,0 +1,6 @@
+@TextToSqlQuery_HostAddress = http://localhost:5129
+
+GET {{TextToSqlQuery_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

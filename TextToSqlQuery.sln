@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36518.9 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TextToSqlQuery", "TextToSqlQuery\TextToSqlQuery.csproj", "{783074C2-14C8-4CF0-AAD1-8540E8C890C8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{783074C2-14C8-4CF0-AAD1-8540E8C890C8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{783074C2-14C8-4CF0-AAD1-8540E8C890C8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{783074C2-14C8-4CF0-AAD1-8540E8C890C8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{783074C2-14C8-4CF0-AAD1-8540E8C890C8}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {637A059F-F44D-4ECB-8EF1-2EE1F675BC2B}
+	EndGlobalSection
+EndGlobal
