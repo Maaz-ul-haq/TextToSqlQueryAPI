@@ -10,7 +10,7 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
     <PackageReference Include="Dapper" Version="2.1.28" />
     <PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
+    <!--<PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />-->
   </ItemGroup>
 
 </Project>
