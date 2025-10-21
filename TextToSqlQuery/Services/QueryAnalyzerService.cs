@@ -85,21 +85,21 @@ namespace TextToSqlQuery.Services
 
             var fullPrompt = $@"You are a SQL expert. Generate ONLY a valid SQL Server query based on the user's request.
 
-Database Schema:
-{schemaDescription}
+                                Database Schema:
+                                {schemaDescription}
 
-User Request: {prompt}
+                                User Request: {prompt}
 
-Important Rules:
-1. Return ONLY the SQL query, no explanations
-2. Use proper SQL Server syntax
-3. Use appropriate JOINs when querying multiple tables
-4. Include WHERE clauses when filtering is needed
-5. Use TOP if limiting results
-6. Do not include markdown formatting or code blocks
-7. Start directly with SELECT, INSERT, UPDATE, or DELETE
+                                Important Rules:
+                                1. Return ONLY the SQL query, no explanations
+                                2. Use proper SQL Server syntax
+                                3. Use appropriate JOINs when querying multiple tables
+                                4. Include WHERE clauses when filtering is needed
+                                5. Use TOP if limiting results
+                                6. Do not include markdown formatting or code blocks
+                                7. Start directly with SELECT, INSERT, UPDATE, or DELETE
 
-SQL Query:";
+                                SQL Query:";
 
             var sqlResponse = await _ollamaService.GenerateAsync(ollamaUrl, model, fullPrompt);
 
@@ -122,28 +122,29 @@ SQL Query:";
 
             var analysisPrompt = $@"You are a data analyst. Analyze the following query results and provide insights.
 
-Original Question: {originalPrompt}
+                                Original Question: {originalPrompt}
 
-SQL Query Executed:
-{sqlQuery}
+                                SQL Query Executed:
+                                {sqlQuery}
 
-Results (showing first 5 rows):
-{dataJson}
+                                Results (showing first 5 rows):
+                                {dataJson}
 
-Total Rows: {data.Count}
+                                Total Rows: {data.Count}
 
-Provide a clear, concise analysis that:
-1. Summarizes the key findings
-2. Answers the original question
-3. Highlights any interesting patterns or insights
-4. Uses plain language that non-technical users can understand
+                                Provide a clear, concise analysis that:
+                                1. Summarizes the key findings
+                                2. Answers the original question
+                                3. Highlights any interesting patterns or insights
+                                4. Uses plain language that non-technical users can understand
 
-Analysis:";
+                                Analysis:";
 
             var analysis = await _ollamaService.GenerateAsync(ollamaUrl, model, analysisPrompt);
             return analysis;
         }
 
+        // Here we convert the table details in to description string
         private string BuildSchemaDescription(DatabaseSchema schema)
         {
             var sb = new StringBuilder();

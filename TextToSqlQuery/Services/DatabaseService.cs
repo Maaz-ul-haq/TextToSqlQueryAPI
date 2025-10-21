@@ -10,7 +10,7 @@ namespace TextToSqlQuery.Services
         {
             using var connection = new SqlConnection(connectionString);
             await connection.OpenAsync();
-
+            // after filling the tableInfo the tables get add in databaseSchema
             var schema = new DatabaseSchema();
 
             // Get all tables
@@ -22,7 +22,9 @@ namespace TextToSqlQuery.Services
 
             foreach (var tableName in tables)
             {
-                var tableInfo = new TableInfo { TableName = tableName };
+                // table info model save the table name and that table col
+                var tableInfo = new TableInfo 
+                { TableName = tableName };
 
                 // Get columns for each table
                 var columns = await connection.QueryAsync<dynamic>(@"
