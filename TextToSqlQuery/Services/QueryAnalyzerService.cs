@@ -11,10 +11,7 @@ namespace TextToSqlQuery.Services
         private readonly DatabaseService _databaseService;
         private readonly ILogger<QueryAnalyzerService> _logger;
 
-        public QueryAnalyzerService(
-            OllamaService ollamaService,
-            DatabaseService databaseService,
-            ILogger<QueryAnalyzerService> logger)
+        public QueryAnalyzerService(OllamaService ollamaService,DatabaseService databaseService, ILogger<QueryAnalyzerService> logger)
         {
             _ollamaService = ollamaService;
             _databaseService = databaseService;
@@ -75,45 +72,59 @@ namespace TextToSqlQuery.Services
             return response;
         }
 
-        private async Task<string> GenerateSqlQueryAsync(
-            string ollamaUrl,
-            string model,
-            string prompt,
-            DatabaseSchema schema)
+        private async Task<string> GenerateSqlQueryAsync(string ollamaUrl, string model,string prompt,DatabaseSchema schema)
         {
             // build the table in to string details
             var schemaDescription = BuildSchemaDescription(schema);
 
-            var fullPrompt = $@"You are an expert SQL Server database assistant. Your ONLY job is to generate a valid SQL query.
+            var fullPrompt = $@"
+                You are an expert SQL Server database assistant. 
+                Your ONLY job is to generate a valid and optimized SQL Server query based on the user's question and the provided schema.
 
                 DATABASE SCHEMA:
                 {schemaDescription}
 
-                USER QUESTION: {prompt}
+                USER QUESTION:
+                {prompt}
 
-                CRITICAL RULES - READ CAREFULLY:
-                1. Output ONLY the SQL query - nothing else
-                2. No explanations, no markdown, no commentary
-                3. Use EXACT table and column names from the schema above
-                4. Use SQL Server syntax (TOP instead of LIMIT)
-                5. Always use proper JOINs with ON clauses
-                6. Include WHERE clauses for filtering
-                7. Use aggregate functions (SUM, COUNT, AVG) when asking for totals or averages
-                8. Use ORDER BY when asking for 'top' or 'highest' or 'lowest'
-                9. Use GROUP BY when using aggregate functions with non-aggregated columns
+                STRICT INSTRUCTIONS (READ CAREFULLY):
+                1. Output ONLY a single valid SQL Server query — no explanations, no comments, no markdown, no text outside the query.
+                2. Always use the **exact table and column names** from the provided schema.
+                3. Always use **SQL Server syntax** (e.g., TOP instead of LIMIT, GETDATE() instead of NOW()).
+                4. Always include **JOINs with ON clauses** when referencing multiple tables.
+                5. Always include a **WHERE clause** when the question implies filtering (e.g., by year, date, name, status, etc.).
+                6. Always include an **ORDER BY** clause when the question mentions top, highest, lowest, recent, latest, or oldest.
+                7. Always include **GROUP BY** when using aggregate functions (SUM, COUNT, AVG, MAX, MIN) alongside non-aggregated columns.
+                8. Use **aggregate aliases** like TotalSales, AvgPrice, OrderCount, etc., when appropriate.
+                9. Handle plural words intelligently — e.g., 'customers' → Customers table, 'orders' → Orders table.
+                10. Use **INNER JOIN** by default unless the context clearly implies LEFT JOIN (e.g., 'include customers with no orders').
+                11. Use **meaningful column selections** — prefer descriptive names like CustomerName, OrderDate, ProductName, not just *.
+                12. When filtering by date (e.g., “in 2024” or “last month”), use SQL Server date functions such as YEAR(), MONTH(), and DATEADD().
+                13. If inserting, updating, or deleting, ensure proper syntax and reference to actual columns.
 
                 EXAMPLES:
-                Question: ""Show top 5 customers by revenue""
-                Answer: SELECT TOP 5 CustomerID, CustomerName, SUM(OrderTotal) AS Revenue FROM Customers JOIN Orders ON Customers.CustomerID = Orders.CustomerID GROUP BY CustomerID, CustomerName ORDER BY Revenue DESC
+                User: Show top 5 customers by revenue
+                SQL: SELECT TOP 5 c.CustomerID, c.CustomerName, SUM(o.OrderTotal) AS Revenue
+                     FROM Customers c
+                     JOIN Orders o ON c.CustomerID = o.CustomerID
+                     GROUP BY c.CustomerID, c.CustomerName
+                     ORDER BY Revenue DESC;
 
-                Question: ""How many orders in 2024""
-                Answer: SELECT COUNT(*) AS OrderCount FROM Orders WHERE YEAR(OrderDate) = 2024
+                User: How many orders were made in 2024
+                SQL: SELECT COUNT(*) AS OrderCount FROM Orders WHERE YEAR(OrderDate) = 2024;
 
-                Question: ""Average product price by category""
-                Answer: SELECT CategoryName, AVG(Price) AS AvgPrice FROM Products JOIN Categories ON Products.CategoryID = Categories.CategoryID GROUP BY CategoryName
+                User: Average product price by category
+                SQL: SELECT cat.CategoryName, AVG(p.Price) AS AvgPrice
+                     FROM Products p
+                     JOIN Categories cat ON p.CategoryID = cat.CategoryID
+                     GROUP BY cat.CategoryName;
 
-                NOW GENERATE THE SQL QUERY FOR THE USER'S QUESTION.
-                REMEMBER: Output ONLY the SQL query, starting with SELECT, INSERT, UPDATE, or DELETE:";
+                FINAL OUTPUT REQUIREMENTS:
+                - Output must start directly with SELECT, INSERT, UPDATE, or DELETE.
+                - Do not include explanations, commentary, markdown, or code fencing.
+                - The query must be executable directly in SQL Server Management Studio.
+                ";
+
 
             // Send the request to Ollama to generate query
             var sqlResponse = await _ollamaService.GenerateAsync(ollamaUrl, model, fullPrompt);
@@ -174,36 +185,41 @@ namespace TextToSqlQuery.Services
                 }
             }
 
-            var analysisPrompt = $@"You are an expert data analyst. Analyze the query results and provide clear insights.
+            var analysisPrompt = $@"
+                You are an expert business data analyst. Your task is to interpret SQL query results and provide clear, accurate insights in natural language.
 
                 CONTEXT:
                 - User Question: ""{originalPrompt}""
                 - SQL Query: {sqlQuery}
-                - Total Records: {data.Count}
+                - Total Records Returned: {data.Count}
 
-                DATA STATISTICS:
+                DATA SUMMARY:
                 {stats}
 
-                SAMPLE DATA (first 5 rows):
+                SAMPLE DATA (First 5 Rows):
                 {dataJson}
 
-                TASK:
-                Provide a professional analysis in 2-3 paragraphs that:
+                YOUR TASK:
+                Write a short professional analysis (2–3 paragraphs, up to 150 words) that:
 
-                1. DIRECTLY ANSWERS the user's original question with specific numbers/facts from the data
-                2. Highlights the most important insights and patterns
-                3. Mentions any notable trends, outliers, or interesting findings
-                4. Uses simple, non-technical language
-                5. Is concise but informative (maximum 150 words)
+                1. Directly answers the user's question using exact figures, counts, or percentages from the data.
+                2. Highlights the most important insights, trends, or comparisons visible in the data.
+                3. Points out any outliers, anomalies, or notable patterns (if relevant).
+                4. Uses simple, business-friendly language (avoid technical or SQL jargon).
+                5. Focuses on meaning and implications, not query logic.
 
-                IMPORTANT:
-                - Start with the direct answer to their question
-                - Use actual numbers from the data
-                - Be specific, not generic
-                - Don't explain SQL or technical details
-                - Focus on business insights
+                STYLE AND FORMAT:
+                - Begin immediately with the answer to the user's question.
+                - Be factual, specific, and concise.
+                - Do NOT include SQL terms, code, or data column names.
+                - Present insights as if explaining them to a business stakeholder.
 
-                Your Analysis:";
+                FINAL OUTPUT:
+                A clear, well-structured written analysis only — no bullet points, no markdown, no code.
+
+                Your Analysis:
+                ";
+
 
             var analysis = await _ollamaService.GenerateAsync(ollamaUrl, model, analysisPrompt);
             return analysis.Trim();
