@@ -15,6 +15,7 @@ namespace TextToSqlQuery.Services
             _logger = logger;
         }
 
+
         public async Task<string> GenerateAsync(string ollamaUrl, string model, string prompt)
         {
             try

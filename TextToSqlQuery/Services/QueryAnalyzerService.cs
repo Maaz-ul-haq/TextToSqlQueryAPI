@@ -11,10 +11,7 @@ namespace TextToSqlQuery.Services
         private readonly DatabaseService _databaseService;
         private readonly ILogger<QueryAnalyzerService> _logger;
 
-        public QueryAnalyzerService(
-            OllamaService ollamaService,
-            DatabaseService databaseService,
-            ILogger<QueryAnalyzerService> logger)
+        public QueryAnalyzerService(OllamaService ollamaService,DatabaseService databaseService, ILogger<QueryAnalyzerService> logger)
         {
             _ollamaService = ollamaService;
             _databaseService = databaseService;
@@ -75,75 +72,163 @@ namespace TextToSqlQuery.Services
             return response;
         }
 
-        private async Task<string> GenerateSqlQueryAsync(
-            string ollamaUrl,
-            string model,
-            string prompt,
-            DatabaseSchema schema)
+        private async Task<string> GenerateSqlQueryAsync(string ollamaUrl, string model,string prompt,DatabaseSchema schema)
         {
+            // build the table in to string details
             var schemaDescription = BuildSchemaDescription(schema);
 
-            var fullPrompt = $@"You are a SQL expert. Generate ONLY a valid SQL Server query based on the user's request.
+            var fullPrompt = $@"
+                You are an expert SQL Server database assistant. 
+                Your ONLY job is to generate a valid and optimized SQL Server query based on the user's question and the provided schema.
 
-Database Schema:
-{schemaDescription}
+                DATABASE SCHEMA:
+                {schemaDescription}
 
-User Request: {prompt}
+                USER QUESTION:
+                {prompt}
 
-Important Rules:
-1. Return ONLY the SQL query, no explanations
-2. Use proper SQL Server syntax
-3. Use appropriate JOINs when querying multiple tables
-4. Include WHERE clauses when filtering is needed
-5. Use TOP if limiting results
-6. Do not include markdown formatting or code blocks
-7. Start directly with SELECT, INSERT, UPDATE, or DELETE
+                STRICT INSTRUCTIONS (READ CAREFULLY):
+                1. Output ONLY a single valid SQL Server query — no explanations, no comments, no markdown, no text outside the query.
+                2. Always use the **exact table and column names** from the provided schema.
+                3. Always use **SQL Server syntax** (e.g., TOP instead of LIMIT, GETDATE() instead of NOW()).
+                4. Always include **JOINs with ON clauses** when referencing multiple tables.
+                5. Always include a **WHERE clause** when the question implies filtering (e.g., by year, date, name, status, etc.).
+                6. Always include an **ORDER BY** clause when the question mentions top, highest, lowest, recent, latest, or oldest.
+                7. Always include **GROUP BY** when using aggregate functions (SUM, COUNT, AVG, MAX, MIN) alongside non-aggregated columns.
+                8. Use **aggregate aliases** like TotalSales, AvgPrice, OrderCount, etc., when appropriate.
+                9. Handle plural words intelligently — e.g., 'customers' → Customers table, 'orders' → Orders table.
+                10. Use **INNER JOIN** by default unless the context clearly implies LEFT JOIN (e.g., 'include customers with no orders').
+                11. Use **meaningful column selections** — prefer descriptive names like CustomerName, OrderDate, ProductName, not just *.
+                12. When filtering by date (e.g., “in 2024” or “last month”), use SQL Server date functions such as YEAR(), MONTH(), and DATEADD().
+                13. If inserting, updating, or deleting, ensure proper syntax and reference to actual columns.
 
-SQL Query:";
+                EXAMPLES:
+                User: Show top 5 customers by revenue
+                SQL: SELECT TOP 5 c.CustomerID, c.CustomerName, SUM(o.OrderTotal) AS Revenue
+                     FROM Customers c
+                     JOIN Orders o ON c.CustomerID = o.CustomerID
+                     GROUP BY c.CustomerID, c.CustomerName
+                     ORDER BY Revenue DESC;
 
+                User: How many orders were made in 2024
+                SQL: SELECT COUNT(*) AS OrderCount FROM Orders WHERE YEAR(OrderDate) = 2024;
+
+                User: Average product price by category
+                SQL: SELECT cat.CategoryName, AVG(p.Price) AS AvgPrice
+                     FROM Products p
+                     JOIN Categories cat ON p.CategoryID = cat.CategoryID
+                     GROUP BY cat.CategoryName;
+
+                FINAL OUTPUT REQUIREMENTS:
+                - Output must start directly with SELECT, INSERT, UPDATE, or DELETE.
+                - Do not include explanations, commentary, markdown, or code fencing.
+                - The query must be executable directly in SQL Server Management Studio.
+                ";
+
+
+            // Send the request to Ollama to generate query
             var sqlResponse = await _ollamaService.GenerateAsync(ollamaUrl, model, fullPrompt);
 
             // Clean up the response
             var cleanedQuery = CleanSqlQuery(sqlResponse);
 
+            // Validate the query
+            if (!IsValidSqlQuery(cleanedQuery))
+            {
+                _logger.LogWarning($"Generated invalid query, retrying... Original: {cleanedQuery}");
+
+                // Retry with stricter prompt
+                var retryPrompt = $@"GENERATE ONLY A VALID SQL QUERY. NO EXPLANATIONS.
+
+                    Schema: {schemaDescription}
+                    Question: {prompt}
+
+                    Output format: SELECT ... FROM ... WHERE ...
+                    Start your response with SELECT:";
+
+                sqlResponse = await _ollamaService.GenerateAsync(ollamaUrl, model, retryPrompt);
+                cleanedQuery = CleanSqlQuery(sqlResponse);
+            }
+
             return cleanedQuery;
         }
 
         private async Task<string> AnalyzeResultsAsync(
-            string ollamaUrl,
-            string model,
-            string originalPrompt,
-            string sqlQuery,
-            List<Dictionary<string, object>> data)
+        string ollamaUrl,
+        string model,
+        string originalPrompt,
+        string sqlQuery,
+        List<Dictionary<string, object>> data)
         {
             var dataPreview = data.Take(5).ToList();
             var dataJson = System.Text.Json.JsonSerializer.Serialize(dataPreview,
                 new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
 
-            var analysisPrompt = $@"You are a data analyst. Analyze the following query results and provide insights.
+            // Calculate statistics for better analysis
+            var stats = new StringBuilder();
+            stats.AppendLine($"Total Rows: {data.Count}");
 
-Original Question: {originalPrompt}
+            if (data.Any())
+            {
+                var firstRow = data.First();
+                foreach (var key in firstRow.Keys)
+                {
+                    var values = data.Select(r => r[key]).Where(v => v != null && v != DBNull.Value).ToList();
+                    if (values.Any())
+                    {
+                        if (IsNumeric(values.First()))
+                        {
+                            var numValues = values.Select(v => Convert.ToDouble(v)).ToList();
+                            stats.AppendLine($"- {key}: Min={numValues.Min():N2}, Max={numValues.Max():N2}, Avg={numValues.Average():N2}");
+                        }
+                    }
+                }
+            }
 
-SQL Query Executed:
-{sqlQuery}
+            var analysisPrompt = $@"
+                You are an expert business data analyst. Your task is to interpret SQL query results and provide clear, accurate insights in natural language.
 
-Results (showing first 5 rows):
-{dataJson}
+                CONTEXT:
+                - User Question: ""{originalPrompt}""
+                - SQL Query: {sqlQuery}
+                - Total Records Returned: {data.Count}
 
-Total Rows: {data.Count}
+                DATA SUMMARY:
+                {stats}
 
-Provide a clear, concise analysis that:
-1. Summarizes the key findings
-2. Answers the original question
-3. Highlights any interesting patterns or insights
-4. Uses plain language that non-technical users can understand
+                SAMPLE DATA (First 5 Rows):
+                {dataJson}
 
-Analysis:";
+                YOUR TASK:
+                Write a short professional analysis (2–3 paragraphs, up to 150 words) that:
+
+                1. Directly answers the user's question using exact figures, counts, or percentages from the data.
+                2. Highlights the most important insights, trends, or comparisons visible in the data.
+                3. Points out any outliers, anomalies, or notable patterns (if relevant).
+                4. Uses simple, business-friendly language (avoid technical or SQL jargon).
+                5. Focuses on meaning and implications, not query logic.
+
+                STYLE AND FORMAT:
+                - Begin immediately with the answer to the user's question.
+                - Be factual, specific, and concise.
+                - Do NOT include SQL terms, code, or data column names.
+                - Present insights as if explaining them to a business stakeholder.
+
+                FINAL OUTPUT:
+                A clear, well-structured written analysis only — no bullet points, no markdown, no code.
+
+                Your Analysis:
+                ";
+
 
             var analysis = await _ollamaService.GenerateAsync(ollamaUrl, model, analysisPrompt);
-            return analysis;
+            return analysis.Trim();
         }
 
+
+        #region Helper
+
+        // Here we convert the table details in to description string
         private string BuildSchemaDescription(DatabaseSchema schema)
         {
             var sb = new StringBuilder();
@@ -187,5 +272,36 @@ Analysis:";
 
             return query;
         }
+
+
+        private bool IsValidSqlQuery(string query)
+        {
+            if (string.IsNullOrWhiteSpace(query)) return false;
+
+            var upperQuery = query.Trim().ToUpper();
+
+            // Must start with valid SQL keyword
+            var validStarts = new[] { "SELECT", "INSERT", "UPDATE", "DELETE", "WITH" };
+            if (!validStarts.Any(k => upperQuery.StartsWith(k))) return false;
+
+            // For SELECT queries, must have FROM
+            if (upperQuery.StartsWith("SELECT") && !upperQuery.Contains("FROM"))
+                return false;
+
+            // Should not contain explanatory phrases
+            var invalidPhrases = new[] { "here is", "this query", "explanation", "note that", "this will" };
+            if (invalidPhrases.Any(p => upperQuery.Contains(p.ToUpper())))
+                return false;
+
+            return true;
+        }
+
+        private bool IsNumeric(object value)
+        {
+            return value is int || value is long || value is float || value is double || value is decimal;
+        }
+
+        #endregion
+
     }
 }
