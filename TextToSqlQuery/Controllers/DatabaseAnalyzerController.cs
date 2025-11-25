@@ -31,12 +31,12 @@ namespace TextToSqlQuery.Controllers
         [HttpPost("analyze")]
         public async Task<ActionResult<AnalyzeResponse>> Analyze([FromBody] string prompt)
         {
-            // Read values from appsettings.json
+           
             var connectionString = _configuration["AnalyzeSettings:ConnectionString"];
             var ollamaUrl = _configuration["AnalyzeSettings:OllamaUrl"];
             var model = _configuration["AnalyzeSettings:Model"];
 
-            // Build your request object
+          
             var request = new AnalyzeRequest
             {
                 Prompt = prompt,
@@ -73,9 +73,9 @@ namespace TextToSqlQuery.Controllers
         }
 
         [HttpPost("test-connection")]
-        public async Task<ActionResult<object>> TestConnection([FromBody] DatabaseConnection connection)
+        public async Task<ActionResult<object>> TestConnection([FromBody] string connectionS)
         {
-            var isConnected = await _databaseService.TestConnectionAsync(connection.ConnectionString);
+            var isConnected = await _databaseService.TestConnectionAsync(connectionS);
 
             return Ok(new
             {
@@ -85,11 +85,11 @@ namespace TextToSqlQuery.Controllers
         }
 
         [HttpPost("get-schema")]
-        public async Task<ActionResult<DatabaseSchema>> GetSchema([FromBody] DatabaseConnection connection)
+        public async Task<ActionResult<DatabaseSchema>> GetSchema([FromBody] string connectionS)
         {
             try
             {
-                var schema = await _databaseService.GetDatabaseSchemaAsync(connection.ConnectionString);
+                var schema = await _databaseService.GetDatabaseSchemaAsync(connectionS);
                 return Ok(schema);
             }
             catch (Exception ex)
